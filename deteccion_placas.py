@@ -3,6 +3,7 @@ import cv2  # OpenCV para manipulación de imágenes
 import matplotlib.pyplot as plt  # Matplotlib para mostrar imágenes
 import argparse  # Biblioteca para manejar argumentos desde la línea de comandos
 import os  # Biblioteca para trabajar con rutas de archivos
+import easyocr  # Biblioteca para OCR
 
 def mul_fragker(fragment, kernel):
     """Multiplica dos matrices elemento por elemento y devuelve la suma."""
@@ -49,6 +50,31 @@ def convolution(image, kernel, padding=None):
 
     return np.clip(output, 0, 255).astype(np.uint8)
 
+def apply_sobel(image, padding='none'):
+    """Aplica los filtros Sobel horizontal y vertical y combina los resultados."""
+    # Definir los kernels Sobel
+    sobel_horizontal = np.array([
+        [-1, -2, -1],
+        [ 0,  0,  0],
+        [ 1,  2,  1]
+    ])
+
+    sobel_vertical = np.array([
+        [-1, 0, 1],
+        [-2, 0, 2],
+        [-1, 0, 1]
+    ])
+
+    # Aplicar convolución con ambos kernels
+    horizontal_output = convolution(image, sobel_horizontal, padding=padding)
+    vertical_output = convolution(image, sobel_vertical, padding=padding)
+
+    # Combinar las dos imágenes usando la magnitud de gradiente
+    combined_output = np.sqrt(np.square(horizontal_output.astype(np.float32)) +
+                              np.square(vertical_output.astype(np.float32)))
+
+    return np.clip(combined_output, 0, 255).astype(np.uint8)
+
 def display_images_side_by_side(image1, image2):
     """Muestra dos imágenes lado a lado usando Matplotlib."""
     image1_rgb = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
@@ -63,12 +89,25 @@ def display_images_side_by_side(image1, image2):
     axes[1].axis('off')
     plt.show()
 
+def extract_text_easyocr(image):
+    """Extrae texto de una imagen usando EasyOCR."""
+    reader = easyocr.Reader(['en'], gpu=True)  # Inicializar el lector
+    results = reader.readtext(image)
+
+    # Mostrar los resultados
+    text = ""
+    print("Texto Detectado:")
+    for (bbox, text_result, prob) in results:
+        print(f"Texto: '{text_result}', Confianza: {prob}")
+        text += text_result + " "
+    return text
+
 def main():
     # Configurar argparse para recibir argumentos por línea de comandos
-    ap = argparse.ArgumentParser(description="Aplicación de filtro Sobel a una imagen")
+    ap = argparse.ArgumentParser(description="Aplicación de filtro Sobel y OCR con EasyOCR")
     ap.add_argument("-i", "--image", required=True, help="Ruta de la imagen de entrada")
     ap.add_argument("--padding", choices=['same', 'none'], default='none',
-                    help="Selecciona el tipo de padding: 'same' para padding de salida igual al tamaño de entrada, 'none' para sin padding")
+                    help="Selecciona el tipo de padding: 'same' para padding igual al tamaño de entrada, 'none' para sin padding")
     args = vars(ap.parse_args())
 
     # Leer la imagen usando la ruta proporcionada
@@ -79,19 +118,17 @@ def main():
 
     image = cv2.imread(image_path)  # Leer imagen en color
 
-    # Definir el kernel Sobel
-    sobel_kernel = np.array([
-        [-1, 0, 1],
-        [-2, 0, 2],
-        [-1, 0, 1]
-    ])
-
-    # Aplicar la convolución con o sin padding
+    # Aplicar los filtros Sobel horizontal y vertical, y combinar los resultados
     padding = args["padding"]
-    output_image = convolution(image, sobel_kernel, padding=padding)
+    output_image = apply_sobel(image, padding=padding)
 
     # Mostrar la imagen original y la procesada lado a lado
     display_images_side_by_side(image, output_image)
+
+    # Extraer y mostrar el texto de la imagen procesada
+    detected_text = extract_text_easyocr(output_image)
+    print("\nTexto Completo Detectado:")
+    print(detected_text)
 
 if __name__ == "__main__":
     main()
