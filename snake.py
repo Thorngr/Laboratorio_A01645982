@@ -1,53 +1,51 @@
-"""Snake, classic arcade game with moving food and random colors.
-
-1. The food moves randomly one step at a time within the window.
-2. Snake and food have different colors selected randomly from a list (excluding red).
-"""
-
-from random import randrange, choice
 from turtle import *
+from random import randrange, random
 from freegames import square, vector
 
-# List of possible colors (excluding red)
-colors = ['blue', 'green', 'yellow', 'purple', 'orange']
+# Colores para víbora y comida (sin incluir rojo)
+colores_disponibles = ['blue', 'yellow', 'purple', 'orange', 'cyan']
 
-# Assign random colors for snake and food, ensuring they are different
-snake_color = choice(colors)
-food_color = choice([c for c in colors if c != snake_color])
+# Asignación de colores distintos usando random
+indice_vibora = randrange(len(colores_disponibles))
+indice_comida = randrange(len(colores_disponibles))
+
+# Asegura que los colores sean distintos
+while indice_comida == indice_vibora:
+    indice_comida = randrange(len(colores_disponibles))
+
+color_vibora = colores_disponibles[indice_vibora]
+color_comida = colores_disponibles[indice_comida]
+
+def mover_comida():
+    """Mueve la comida un paso aleatorio sin salirse de la ventana."""
+    movimiento = vector(randrange(-1, 2) * 10, randrange(-1, 2) * 10)
+    nueva_posicion = food + movimiento
+
+    if -200 < nueva_posicion.x < 190 and -200 < nueva_posicion.y < 190:
+        food.move(movimiento)
+
+    ontimer(mover_comida, 500)  # Programar siguiente movimiento en 500ms
 
 food = vector(0, 0)
 snake = [vector(10, 0)]
 aim = vector(0, -10)
 
 def change(x, y):
-    """Change snake direction."""
+    "Change snake direction."
     aim.x = x
     aim.y = y
 
 def inside(head):
-    """Return True if head inside boundaries."""
+    "Return True if head inside boundaries."
     return -200 < head.x < 190 and -200 < head.y < 190
 
-def move_food():
-    """Move food one step randomly within the window boundaries."""
-    options = [vector(10, 0), vector(-10, 0), vector(0, 10), vector(0, -10)]  # Possible movements
-    move = choice(options)
-    new_position = food + move
-
-    # Ensure the food stays inside the window
-    if -190 < new_position.x < 190 and -190 < new_position.y < 190:
-        food.move(move)
-
-    # Schedule the next move of the food
-    ontimer(move_food, 500)
-
 def move():
-    """Move snake forward one segment."""
+    "Move snake forward one segment."
     head = snake[-1].copy()
     head.move(aim)
 
     if not inside(head) or head in snake:
-        square(head.x, head.y, 9, 'red')  # Game over, show red head
+        square(head.x, head.y, 9, 'red')
         update()
         return
 
@@ -62,26 +60,24 @@ def move():
 
     clear()
 
+    # Dibujar la víbora con el color asignado
     for body in snake:
-        square(body.x, body.y, 9, snake_color)  # Draw snake with random color
+        square(body.x, body.y, 9, color_vibora)
 
-    square(food.x, food.y, 9, food_color)  # Draw food with random color
+    # Dibujar la comida con el color asignado
+    square(food.x, food.y, 9, color_comida)
     update()
     ontimer(move, 100)
 
-# Setup the game window
 setup(420, 420, 370, 0)
 hideturtle()
 tracer(False)
 listen()
-
-# Bind arrow keys to change direction
 onkey(lambda: change(10, 0), 'Right')
 onkey(lambda: change(-10, 0), 'Left')
 onkey(lambda: change(0, 10), 'Up')
 onkey(lambda: change(0, -10), 'Down')
 
-# Start the game
 move()
-move_food()  # Start moving the food
+mover_comida()  # Iniciar movimiento aleatorio de la comida
 done()
