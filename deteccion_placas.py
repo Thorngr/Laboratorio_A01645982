@@ -3,7 +3,7 @@ import cv2  # OpenCV para manipulación de imágenes
 import matplotlib.pyplot as plt  # Matplotlib para mostrar imágenes
 import argparse  # Biblioteca para manejar argumentos desde la línea de comandos
 import os  # Biblioteca para trabajar con rutas de archivos
-import easyocr  # Biblioteca para OCR
+import pytesseract  # Biblioteca para Tesseract OCR
 
 def mul_fragker(fragment, kernel):
     """Multiplica dos matrices elemento por elemento y devuelve la suma."""
@@ -28,8 +28,8 @@ def same_padding(image, kernel):
     pad_width = (kernel.shape[1] - 1) // 2
     return apply_padding(image, pad_height, pad_width)
 
-def convolution(image, kernel, padding=None):
-    """Aplica una convolución sobre cada canal de color, con o sin padding."""
+def convolution(image, kernel, padding='none'):
+    """Aplica una convolución sobre cada canal de color, con padding opcional."""
     if padding == 'same':
         image = same_padding(image, kernel)
 
@@ -50,30 +50,38 @@ def convolution(image, kernel, padding=None):
 
     return np.clip(output, 0, 255).astype(np.uint8)
 
-def apply_sobel(image, padding='none'):
-    """Aplica los filtros Sobel horizontal y vertical y combina los resultados."""
-    # Definir los kernels Sobel
-    sobel_horizontal = np.array([
-        [-1, -2, -1],
-        [ 0,  0,  0],
-        [ 1,  2,  1]
+def apply_gaussian_blur(image, padding='same'):
+    """Aplica un filtro de desenfoque Gaussiano."""
+    gaussian_kernel = (1 / 1404) * np.array([
+        [0, 0, 0,  5, 0, 0, 0], 
+        [0, 5, 18, 32, 18, 5, 0],
+        [0, 18, 64, 100, 64, 18, 0],
+        [5, 32, 100, 100, 100, 32, 5],
+        [0, 18, 64, 100, 64, 18, 0],
+        [0, 5, 18, 32, 18, 5, 0],
+        [0, 0, 0,  5, 0, 0, 0]
     ])
+    return convolution(image, gaussian_kernel, padding=padding)
 
-    sobel_vertical = np.array([
-        [-1, 0, 1],
-        [-2, 0, 2],
-        [-1, 0, 1]
+def apply_log_filter(image, padding='same'):
+    """Aplica el filtro Laplaciano de Gaussiano."""
+    log_kernel = np.array([
+        [0,  0, -1,  0,  0],
+        [0, -1, -2, -1,  0], 
+        [-1, -2, 16, -2, -1],
+        [0, -1, -2, -1,  0], 
+        [0,  0, -1,  0,  0]
     ])
+    return convolution(image, log_kernel, padding=padding)
 
-    # Aplicar convolución con ambos kernels
-    horizontal_output = convolution(image, sobel_horizontal, padding=padding)
-    vertical_output = convolution(image, sobel_vertical, padding=padding)
-
-    # Combinar las dos imágenes usando la magnitud de gradiente
-    combined_output = np.sqrt(np.square(horizontal_output.astype(np.float32)) +
-                              np.square(vertical_output.astype(np.float32)))
-
-    return np.clip(combined_output, 0, 255).astype(np.uint8)
+def apply_edge_detection(image, padding='same'):
+    """Aplica un filtro de detección de bordes."""
+    edge_detection_kernel = np.array([
+        [-1, -1, -1],
+        [-1,  8, -1],
+        [-1, -1, -1]
+    ])
+    return convolution(image, edge_detection_kernel, padding=padding)
 
 def display_images_side_by_side(image1, image2):
     """Muestra dos imágenes lado a lado usando Matplotlib."""
@@ -89,46 +97,43 @@ def display_images_side_by_side(image1, image2):
     axes[1].axis('off')
     plt.show()
 
-def extract_text_easyocr(image):
-    """Extrae texto de una imagen usando EasyOCR."""
-    reader = easyocr.Reader(['en'], gpu=True)  # Inicializar el lector
-    results = reader.readtext(image)
-
-    # Mostrar los resultados
-    text = ""
-    print("Texto Detectado:")
-    for (bbox, text_result, prob) in results:
-        print(f"Texto: '{text_result}', Confianza: {prob}")
-        text += text_result + " "
+def extract_text_tesseract(image):
+    """Extrae texto de una imagen usando Tesseract OCR."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    text = pytesseract.image_to_string(gray, config='--psm 8')
+    print("Texto Detectado con Tesseract:")
+    print(text)
     return text
 
 def main():
-    # Configurar argparse para recibir argumentos por línea de comandos
-    ap = argparse.ArgumentParser(description="Aplicación de filtro Sobel y OCR con EasyOCR")
+    ap = argparse.ArgumentParser(description="Aplicación de OCR con Tesseract")
     ap.add_argument("-i", "--image", required=True, help="Ruta de la imagen de entrada")
-    ap.add_argument("--padding", choices=['same', 'none'], default='none',
-                    help="Selecciona el tipo de padding: 'same' para padding igual al tamaño de entrada, 'none' para sin padding")
+    ap.add_argument("--padding", choices=['same', 'none'], default='none', help="Tipo de padding a usar")
     args = vars(ap.parse_args())
 
     # Leer la imagen usando la ruta proporcionada
     image_path = args["image"]
+    padding = args["padding"]
+
     if not os.path.isfile(image_path):
         print(f"El archivo '{image_path}' no se encontró.")
         exit(1)
 
     image = cv2.imread(image_path)  # Leer imagen en color
 
-    # Aplicar los filtros Sobel horizontal y vertical, y combinar los resultados
-    padding = args["padding"]
-    output_image = apply_sobel(image, padding=padding)
+    # Aplicar filtros de procesamiento de imagen
+    blurred_image = apply_gaussian_blur(image, padding=padding)
+    log_image = apply_log_filter(blurred_image, padding=padding)
+    edge_image = apply_edge_detection(log_image, padding=padding)
 
     # Mostrar la imagen original y la procesada lado a lado
-    display_images_side_by_side(image, output_image)
+    display_images_side_by_side(image, edge_image)
 
-    # Extraer y mostrar el texto de la imagen procesada
-    detected_text = extract_text_easyocr(output_image)
+    # Extraer y mostrar el texto usando Tesseract OCR
+    detected_text_tesseract = extract_text_tesseract(edge_image)
+
     print("\nTexto Completo Detectado:")
-    print(detected_text)
+    print(detected_text_tesseract)
 
 if __name__ == "__main__":
     main()
